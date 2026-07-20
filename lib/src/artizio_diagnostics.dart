@@ -88,9 +88,7 @@ abstract final class ArtizioDiagnostics {
       final value = e.value.trim();
       if (value.isEmpty) continue;
       // Uniquement bool / nombres (compteurs).
-      if (value == 'true' ||
-          value == 'false' ||
-          int.tryParse(value) != null) {
+      if (value == 'true' || value == 'false' || int.tryParse(value) != null) {
         out[key] = value;
       }
     }

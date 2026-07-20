@@ -86,7 +86,8 @@ void main() {
     expect(c, isNot(a));
   });
 
-  test('Diagnostics report omits banned extras and includes install_id after init',
+  test(
+      'Diagnostics report omits banned extras and includes install_id after init',
       () async {
     await ArtizioTelemetry.init(
       options: const ArtizioTelemetryOptions(
