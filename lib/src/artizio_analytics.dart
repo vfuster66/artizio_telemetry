@@ -22,6 +22,7 @@ abstract final class ArtizioAnalytics {
     ArtizioTelemetry.debugLog(
       'track $event${safe.isEmpty ? '' : ' $safe'}',
     );
+    if (!ArtizioTelemetry.isEnabled) return;
     await ArtizioTelemetry.backend.track(event, props: safe);
   }
 }

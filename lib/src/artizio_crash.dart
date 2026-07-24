@@ -33,6 +33,7 @@ abstract final class ArtizioCrash {
     ArtizioTelemetry.debugLog(
       'crash $eventCode (${error.runtimeType})',
     );
+    if (!ArtizioTelemetry.isEnabled) return;
     await ArtizioTelemetry.backend.captureException(
       error,
       stackTrace: stackTrace,

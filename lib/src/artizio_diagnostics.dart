@@ -46,6 +46,9 @@ abstract final class ArtizioDiagnostics {
       'sentry_remote=${ArtizioTelemetry.isRemoteEnabled ? 'on' : 'off'}',
     );
     buf.writeln(
+      'telemetry_enabled=${ArtizioTelemetry.isEnabled}',
+    );
+    buf.writeln(
       'environment=${opts?.environment ?? '(default)'}',
     );
     final installId = ArtizioTelemetry.installId;

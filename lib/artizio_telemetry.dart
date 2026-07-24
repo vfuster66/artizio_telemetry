@@ -8,5 +8,6 @@ export 'src/artizio_logger.dart';
 export 'src/artizio_telemetry.dart';
 export 'src/artizio_telemetry_options.dart';
 export 'src/install_id.dart';
+export 'src/privacy_scrubber.dart';
 export 'src/props_allowlist.dart';
 export 'src/recent_event.dart';

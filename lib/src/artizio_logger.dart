@@ -34,6 +34,8 @@ abstract final class ArtizioLogger {
       '${error == null ? '' : ' (${error.runtimeType})'}',
     );
 
+    if (!ArtizioTelemetry.isEnabled) return;
+
     ArtizioTelemetry.backend.addBreadcrumb(
       code,
       category: 'error',
@@ -75,6 +77,7 @@ abstract final class ArtizioLogger {
       ),
     );
     ArtizioTelemetry.debugLog('warning $code');
+    if (!ArtizioTelemetry.isEnabled) return;
     await ArtizioTelemetry.backend.captureMessage(
       code,
       level: 'warning',
