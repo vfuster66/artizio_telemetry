@@ -1,11 +1,29 @@
 import 'package:sentry_flutter/sentry_flutter.dart';
 
+import 'props_allowlist.dart';
+
 /// Redaction PII pour envois Sentry ([beforeSend]).
 abstract final class ArtizioPrivacyScrubber {
   ArtizioPrivacyScrubber._();
 
   /// Longueur max des messages / valeurs d’exception libres.
   static const maxFreeformLength = 200;
+
+  /// Contextes Sentry SDK conservés (le reste est retiré).
+  static const allowedContextKeys = <String>{
+    'device',
+    'os',
+    'runtime',
+    'runtimes',
+    'app',
+    'browser',
+    'gpu',
+    'culture',
+    'trace',
+    'response',
+    'feedback',
+    'flags',
+  };
 
   static final _emailRe = RegExp(
     r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}',
@@ -34,6 +52,15 @@ abstract final class ArtizioPrivacyScrubber {
     return s;
   }
 
+  /// Remplace un chemin de frame par son basename (sans dossier utilisateur).
+  static String scrubPathField(String path) {
+    final normalized = path.replaceAll('\\', '/');
+    final slash = normalized.lastIndexOf('/');
+    final base = slash >= 0 ? normalized.substring(slash + 1) : normalized;
+    if (base.isEmpty) return '[redacted-path]';
+    return scrubText(base, maxLength: 128);
+  }
+
   /// Applique la politique privacy sur un [SentryEvent].
   ///
   /// Retourne `null` pour abandonner l’envoi (opt-out).
@@ -50,7 +77,8 @@ abstract final class ArtizioPrivacyScrubber {
       event.message = SentryMessage(
         scrubText(msg.formatted),
         template: msg.template == null ? null : scrubText(msg.template!),
-        params: msg.params,
+        // params peuvent contenir e-mails / chemins ; on les vide.
+        params: null,
       );
     }
 
@@ -61,6 +89,14 @@ abstract final class ArtizioPrivacyScrubber {
         if (value != null && value.isNotEmpty) {
           ex.value = scrubText(value);
         }
+        _scrubStackTrace(ex.stackTrace);
+      }
+    }
+
+    final threads = event.threads;
+    if (threads != null) {
+      for (final thread in threads) {
+        _scrubStackTrace(thread.stacktrace);
       }
     }
 
@@ -71,6 +107,13 @@ abstract final class ArtizioPrivacyScrubber {
         if (m != null && m.isNotEmpty) {
           c.message = scrubText(m);
         }
+        final data = c.data;
+        if (data != null && data.isNotEmpty) {
+          c.data = {
+            for (final e in data.entries)
+              e.key: e.value is String ? scrubText(e.value as String) : e.value,
+          };
+        }
       }
     }
 
@@ -79,6 +122,45 @@ abstract final class ArtizioPrivacyScrubber {
       event.culprit = scrubText(culprit);
     }
 
+    // extras : deny-by-default via allowlist (valeurs scalaires sûres).
+    // ignore: deprecated_member_use
+    final extra = event.extra;
+    if (extra != null) {
+      final safe = ArtizioPropsAllowlist.sanitize({
+        for (final e in extra.entries) e.key: e.value,
+      });
+      // ignore: deprecated_member_use
+      event.extra = safe.isEmpty ? null : Map<String, dynamic>.from(safe);
+    }
+
+    _scrubContexts(event.contexts);
+
     return event;
+  }
+
+  static void _scrubContexts(Contexts contexts) {
+    final toRemove = <String>[];
+    for (final key in contexts.keys) {
+      if (!allowedContextKeys.contains(key)) {
+        toRemove.add(key);
+      }
+    }
+    for (final key in toRemove) {
+      contexts.remove(key);
+    }
+  }
+
+  static void _scrubStackTrace(SentryStackTrace? stackTrace) {
+    if (stackTrace == null) return;
+    for (final frame in stackTrace.frames) {
+      final abs = frame.absPath;
+      if (abs != null && abs.isNotEmpty) {
+        frame.absPath = scrubPathField(abs);
+      }
+      final name = frame.fileName;
+      if (name != null && name.isNotEmpty) {
+        frame.fileName = scrubPathField(name);
+      }
+    }
   }
 }

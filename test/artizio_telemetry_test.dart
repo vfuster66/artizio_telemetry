@@ -174,4 +174,95 @@ void main() {
     expect(kept.message!.formatted, isNot(contains('/Users/')));
     expect(kept.exceptions!.single.value, contains('[redacted-file-url]'));
   });
+
+  test('scrubEvent clears SentryMessage.params', () {
+    final kept = ArtizioPrivacyScrubber.scrubEvent(
+      SentryEvent(
+        message: SentryMessage(
+          'hello alice@example.com',
+          params: ['alice@example.com', '/Users/me/secret.txt'],
+        ),
+      ),
+      enabled: true,
+    );
+    expect(kept!.message!.params, isNull);
+    expect(kept.message!.formatted, contains('[redacted-email]'));
+    expect(kept.message!.formatted, isNot(contains('alice@')));
+  });
+
+  test('scrubEvent redacts breadcrumb.data string values', () {
+    final kept = ArtizioPrivacyScrubber.scrubEvent(
+      SentryEvent(
+        breadcrumbs: [
+          Breadcrumb(
+            message: 'open alice@example.com',
+            data: {
+              'path': '/Users/virginie/ticket.pdf',
+              'count': 3,
+              'url': 'file:///tmp/x.jpg',
+            },
+          ),
+        ],
+      ),
+      enabled: true,
+    );
+    final crumb = kept!.breadcrumbs!.single;
+    expect(crumb.message, contains('[redacted-email]'));
+    expect(crumb.data!['path'], '[redacted-path]');
+    expect(crumb.data!['url'], contains('[redacted-file-url]'));
+    expect(crumb.data!['count'], 3);
+  });
+
+  test('scrubEvent drops unknown extras and contexts', () {
+    final kept = ArtizioPrivacyScrubber.scrubEvent(
+      SentryEvent(
+        // ignore: deprecated_member_use
+        extra: {
+          'source': 'camera',
+          'merchant': 'Dupont',
+          'secret_blob': 'pii',
+        },
+        contexts: Contexts(
+          app: SentryApp(name: 'trajio'),
+          device: SentryDevice(model: 'Pixel'),
+        )..['custom_pii'] = {'email': 'a@b.c'},
+      ),
+      enabled: true,
+    );
+    // ignore: deprecated_member_use
+    expect(kept!.extra?.keys.toSet(), {'source'});
+    // ignore: deprecated_member_use
+    expect(kept.extra!['source'], 'camera');
+    expect(kept.contexts.containsKey('custom_pii'), isFalse);
+    expect(kept.contexts.app, isNotNull);
+    expect(kept.contexts.device, isNotNull);
+  });
+
+  test('scrubEvent replaces frame absPath and fileName with basename', () {
+    final kept = ArtizioPrivacyScrubber.scrubEvent(
+      SentryEvent(
+        exceptions: [
+          SentryException(
+            type: 'StateError',
+            value: 'boom',
+            stackTrace: SentryStackTrace(
+              frames: [
+                SentryStackFrame(
+                  absPath: '/Users/virginie/dev/perso/app/lib/main.dart',
+                  fileName: r'C:\Users\virginie\src\widget.dart',
+                  function: 'main',
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      enabled: true,
+    );
+    final frame = kept!.exceptions!.single.stackTrace!.frames.single;
+    expect(frame.absPath, 'main.dart');
+    expect(frame.fileName, 'widget.dart');
+    expect(frame.absPath, isNot(contains('/Users/')));
+    expect(frame.fileName, isNot(contains(r'C:\')));
+  });
 }
