@@ -136,7 +136,8 @@ void main() {
     expect(scrubbed, contains('[redacted-file-url]'));
     expect(scrubbed, isNot(contains('alice@example.com')));
     expect(scrubbed, isNot(contains('/Users/virginie')));
-    expect(scrubbed.length, lessThanOrEqualTo(ArtizioPrivacyScrubber.maxFreeformLength + 1));
+    expect(scrubbed.length,
+        lessThanOrEqualTo(ArtizioPrivacyScrubber.maxFreeformLength + 1));
   });
 
   test('beforeSend drops when disabled and clears request', () {
