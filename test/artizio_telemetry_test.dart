@@ -213,6 +213,33 @@ void main() {
     expect(crumb.data!['count'], 3);
   });
 
+  test('scrubEvent redacts nested breadcrumb.data maps and lists', () {
+    final kept = ArtizioPrivacyScrubber.scrubEvent(
+      SentryEvent(
+        breadcrumbs: [
+          Breadcrumb(
+            message: 'nested',
+            data: {
+              'meta': {
+                'email': 'bob@example.com',
+                'file': '/Users/bob/secret.pdf',
+              },
+              'tags': ['ok', 'file:///tmp/a.jpg'],
+            },
+          ),
+        ],
+      ),
+      enabled: true,
+    );
+    final data = kept!.breadcrumbs!.single.data!;
+    final meta = data['meta'] as Map;
+    expect(meta['email'], contains('[redacted-email]'));
+    expect(meta['file'], '[redacted-path]');
+    final tags = data['tags'] as List;
+    expect(tags[0], 'ok');
+    expect(tags[1], contains('[redacted-file-url]'));
+  });
+
   test('scrubEvent drops unknown extras and contexts', () {
     final kept = ArtizioPrivacyScrubber.scrubEvent(
       SentryEvent(

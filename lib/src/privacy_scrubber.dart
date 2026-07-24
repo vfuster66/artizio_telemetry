@@ -61,6 +61,22 @@ abstract final class ArtizioPrivacyScrubber {
     return scrubText(base, maxLength: 128);
   }
 
+  /// Redacte récursivement String / Map / List ; conserve num/bool.
+  static dynamic scrubValue(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return scrubText(value);
+    if (value is Map) {
+      return <String, dynamic>{
+        for (final e in value.entries) e.key.toString(): scrubValue(e.value),
+      };
+    }
+    if (value is Iterable && value is! String) {
+      return [for (final item in value) scrubValue(item)];
+    }
+    if (value is num || value is bool) return value;
+    return scrubText(value.toString());
+  }
+
   /// Applique la politique privacy sur un [SentryEvent].
   ///
   /// Retourne `null` pour abandonner l’envoi (opt-out).
@@ -110,8 +126,7 @@ abstract final class ArtizioPrivacyScrubber {
         final data = c.data;
         if (data != null && data.isNotEmpty) {
           c.data = {
-            for (final e in data.entries)
-              e.key: e.value is String ? scrubText(e.value as String) : e.value,
+            for (final e in data.entries) e.key: scrubValue(e.value),
           };
         }
       }
