@@ -126,6 +126,18 @@ void main() {
     expect(ArtizioTelemetry.isEnabled, isTrue);
   });
 
+  test('init honors enabledByDefault when no preference is saved', () async {
+    await ArtizioTelemetry.init(
+      options: const ArtizioTelemetryOptions(
+        appName: 'trajio',
+        enabledByDefault: false,
+      ),
+      appRunner: () {},
+    );
+
+    expect(ArtizioTelemetry.isEnabled, isFalse);
+  });
+
   test('Privacy scrubber redacts email, paths, file URLs and truncates', () {
     final scrubbed = ArtizioPrivacyScrubber.scrubText(
       'Contact alice@example.com at /Users/virginie/secret.pdf '

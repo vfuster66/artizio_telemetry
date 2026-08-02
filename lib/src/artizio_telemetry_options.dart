@@ -6,6 +6,7 @@ class ArtizioTelemetryOptions {
     this.environment,
     this.tracesSampleRate = 0.2,
     this.enableInDebug = false,
+    this.enabledByDefault = true,
     this.debugLogEvents,
     this.release,
   });
@@ -24,6 +25,9 @@ class ArtizioTelemetryOptions {
 
   /// Si false (défaut), les builds debug n’envoient rien à Sentry.
   final bool enableInDebug;
+
+  /// Initial remote diagnostics preference when the user has no saved choice.
+  final bool enabledByDefault;
 
   /// Affiche les events / erreurs dans la console debug.
   /// Défaut : `true` hors release et hors `flutter test`.

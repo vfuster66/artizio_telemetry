@@ -20,7 +20,7 @@ import 'telemetry_env.dart';
 abstract final class ArtizioTelemetry {
   ArtizioTelemetry._();
 
-  /// Préférence utilisateur : envoi distant (crash / analytics). Défaut `true`.
+  /// Préférence utilisateur : envoi distant (crash / analytics).
   static const prefsEnabledKey = 'artizio_telemetry_enabled';
 
   static TelemetryBackend _backend = NoopTelemetryBackend();
@@ -35,7 +35,7 @@ abstract final class ArtizioTelemetry {
   static ArtizioTelemetryOptions? get options => _options;
   static String? get installId => _installId;
 
-  /// Opt-out diagnostics / analytics distants. Défaut `true`.
+  /// État courant des diagnostics / analytics distants.
   static bool get isEnabled => _enabled;
 
   static TelemetryBackend get backend => _backend;
@@ -68,7 +68,7 @@ abstract final class ArtizioTelemetry {
     _installId = await ArtizioInstallId.getOrCreate();
 
     final prefs = await SharedPreferences.getInstance();
-    _enabled = prefs.getBool(prefsEnabledKey) ?? true;
+    _enabled = prefs.getBool(prefsEnabledKey) ?? options.enabledByDefault;
 
     final useSentry = options.hasDsn &&
         !ArtizioTelemetryEnv.isFlutterTest &&
