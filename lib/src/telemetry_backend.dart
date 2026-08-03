@@ -23,10 +23,7 @@ abstract class TelemetryBackend {
     Map<String, Object?>? data,
   });
 
-  Future<void> track(
-    String event, {
-    Map<String, Object?>? props,
-  });
+  Future<void> track(String event, {Map<String, Object?>? props});
 
   List<NavigatorObserver> get navigatorObservers;
 

@@ -20,9 +20,7 @@ class SentryTelemetryBackend implements TelemetryBackend {
           scope.setTag('error_code', code);
           scope.fingerprint = ['{{ default }}', code];
         }
-        if (message != null && message.isNotEmpty) {
-          scope.setContexts('user_message', {'text': message});
-        }
+        // Free-form user messages are intentionally never attached remotely.
         tags?.forEach(scope.setTag);
       },
     );
@@ -58,21 +56,19 @@ class SentryTelemetryBackend implements TelemetryBackend {
       Breadcrumb(
         message: message,
         category: category,
-        data: data == null
-            ? null
-            : {
-                for (final e in data.entries)
-                  if (e.value != null) e.key: e.value,
-              },
+        data:
+            data == null
+                ? null
+                : {
+                  for (final e in data.entries)
+                    if (e.value != null) e.key: e.value,
+                },
       ),
     );
   }
 
   @override
-  Future<void> track(
-    String event, {
-    Map<String, Object?>? props,
-  }) async {
+  Future<void> track(String event, {Map<String, Object?>? props}) async {
     addBreadcrumb(event, category: 'analytics', data: props);
     await Sentry.captureMessage(
       event,
@@ -80,20 +76,15 @@ class SentryTelemetryBackend implements TelemetryBackend {
       withScope: (scope) {
         scope.setTag('analytics_event', event);
         scope.fingerprint = ['analytics', event];
-        if (props != null && props.isNotEmpty) {
-          scope.setContexts('analytics_props', {
-            for (final e in props.entries)
-              if (e.value != null) e.key: e.value,
-          });
-        }
+        props?.forEach((key, value) {
+          if (value != null) scope.setTag(key, '$value');
+        });
       },
     );
   }
 
   @override
-  List<NavigatorObserver> get navigatorObservers => [
-        SentryNavigatorObserver(),
-      ];
+  List<NavigatorObserver> get navigatorObservers => [SentryNavigatorObserver()];
 
   @override
   void setTag(String key, String value) {

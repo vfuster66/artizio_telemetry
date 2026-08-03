@@ -29,10 +29,7 @@ class NoopTelemetryBackend implements TelemetryBackend {
   }) {}
 
   @override
-  Future<void> track(
-    String event, {
-    Map<String, Object?>? props,
-  }) async {}
+  Future<void> track(String event, {Map<String, Object?>? props}) async {}
 
   @override
   List<NavigatorObserver> get navigatorObservers => const [];

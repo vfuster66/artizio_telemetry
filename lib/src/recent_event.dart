@@ -15,12 +15,19 @@ class RecentEvent {
   final String? error;
 
   Map<String, String> toMap() => {
-        'at': at.toIso8601String(),
-        'kind': kind,
-        'code': code,
-        if (message != null) 'message': message!,
-        if (error != null) 'error': error!,
-      };
+    'at': at.toIso8601String(),
+    'kind': kind,
+    'code': code,
+    if (message != null) 'message': message!,
+    if (error != null) 'error': error!,
+  };
+
+  /// Privacy-safe representation used by shareable diagnostic reports.
+  String toDiagnosticString() {
+    final buf = StringBuffer('${at.toIso8601String()} [$kind] $code');
+    if (error != null && error!.isNotEmpty) buf.write(' ($error)');
+    return buf.toString();
+  }
 
   @override
   String toString() {

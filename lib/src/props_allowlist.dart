@@ -5,6 +5,15 @@
 abstract final class ArtizioPropsAllowlist {
   ArtizioPropsAllowlist._();
 
+  static final _eventNamePattern = RegExp(r'^[a-z][a-z0-9_]{0,63}$');
+  static final _errorCodePattern = RegExp(r'^[A-Z][A-Z0-9_]{0,63}$');
+  static final _emailPattern = RegExp(
+    r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$',
+  );
+
+  static const invalidEventName = 'invalid_event';
+  static const invalidErrorCode = 'INVALID_ERROR_CODE';
+
   /// Clés acceptées (technique / agrégats anonymes uniquement).
   static const allowedKeys = <String>{
     'app',
@@ -27,6 +36,8 @@ abstract final class ArtizioPropsAllowlist {
     'category',
     'round_trip',
     'fatal',
+    'artizio_app',
+    'analytics_event',
   };
 
   /// Clés explicitement interdites (données métier / PII).
@@ -77,13 +88,30 @@ abstract final class ArtizioPropsAllowlist {
   /// Variante tags String→String pour Sentry.
   static Map<String, String> sanitizeTags(Map<String, String>? input) {
     if (input == null || input.isEmpty) return const {};
-    final raw = sanitize({
-      for (final e in input.entries) e.key: e.value,
-    });
+    final raw = sanitize({for (final e in input.entries) e.key: e.value});
     return {
       for (final e in raw.entries)
         if (e.value != null) e.key: '${e.value}',
     };
+  }
+
+  /// Returns a stable product-event identifier or a non-sensitive fallback.
+  static String sanitizeEventName(String value) {
+    final candidate = value.trim();
+    return _eventNamePattern.hasMatch(candidate) ? candidate : invalidEventName;
+  }
+
+  /// Returns a stable error identifier or a non-sensitive fallback.
+  static String sanitizeErrorCode(String value) {
+    final candidate = value.trim();
+    return _errorCodePattern.hasMatch(candidate) ? candidate : invalidErrorCode;
+  }
+
+  /// Whether [value] is safe to use as a telemetry message or breadcrumb.
+  static bool isSafeTelemetryIdentifier(String value) {
+    final candidate = value.trim();
+    return _eventNamePattern.hasMatch(candidate) ||
+        _errorCodePattern.hasMatch(candidate);
   }
 
   static Object? _sanitizeValue(Object? value) {
@@ -97,6 +125,7 @@ abstract final class ArtizioPropsAllowlist {
     if (value is String) {
       var s = value.trim();
       if (s.isEmpty) return null;
+      if (_emailPattern.hasMatch(s)) return null;
       // Chemins / URI : jamais.
       if (s.contains('/') || s.contains('\\') || s.contains(':')) {
         return null;

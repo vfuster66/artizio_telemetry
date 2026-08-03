@@ -1,5 +1,7 @@
 import 'package:artizio_telemetry/artizio_telemetry.dart';
 import 'package:artizio_telemetry/src/recent_event_buffer.dart';
+import 'package:artizio_telemetry/src/telemetry_backend.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,9 +28,13 @@ void main() {
   });
 
   test('Logger records locally without remote', () async {
-    await ArtizioLogger.error('PDF_EXPORT_FAILED', message: 'disk full');
+    await ArtizioLogger.error(
+      'PDF_EXPORT_FAILED',
+      message: 'Alice alice@example.com disk full',
+    );
     expect(ArtizioTelemetry.recentEvents.items, hasLength(1));
     expect(ArtizioTelemetry.recentEvents.items.first.code, 'PDF_EXPORT_FAILED');
+    expect(ArtizioTelemetry.recentEvents.items.first.message, isNull);
   });
 
   test('Analytics records locally', () async {
@@ -57,6 +63,7 @@ void main() {
   test('Allowlist rejects path-like strings', () {
     final safe = ArtizioPropsAllowlist.sanitize({
       'source': '/tmp/secret.jpg',
+      'category': 'alice@example.com',
       'format': 'csv',
     });
     expect(safe.keys.toSet(), {'format'});
@@ -65,16 +72,37 @@ void main() {
   test('Analytics strips PII props before recording', () async {
     await ArtizioAnalytics.track(
       'receipt_added',
-      props: {
-        'source': 'gallery',
-        'merchant': 'Boulangerie',
-        'amount': 1200,
-      },
+      props: {'source': 'gallery', 'merchant': 'Boulangerie', 'amount': 1200},
     );
     final msg = ArtizioTelemetry.recentEvents.items.single.message ?? '';
     expect(msg, contains('source=gallery'));
     expect(msg, isNot(contains('Boulangerie')));
     expect(msg, isNot(contains('1200')));
+  });
+
+  test('Identifiers reject free-form values instead of normalizing them', () {
+    expect(
+      ArtizioPropsAllowlist.sanitizeEventName('alice@example.com'),
+      ArtizioPropsAllowlist.invalidEventName,
+    );
+    expect(
+      ArtizioPropsAllowlist.sanitizeErrorCode('/Users/alice/secret.txt'),
+      ArtizioPropsAllowlist.invalidErrorCode,
+    );
+  });
+
+  test('Telemetry is opt-in by default', () {
+    const options = ArtizioTelemetryOptions(appName: 'trajio');
+    expect(options.enabledByDefault, isFalse);
+    expect(options.tracesSampleRate, 0);
+    expect(ArtizioTelemetry.isEnabled, isFalse);
+  });
+
+  test('Telemetry options reject an invalid traces sample rate', () {
+    expect(
+      () => ArtizioTelemetryOptions(appName: 'trajio', tracesSampleRate: 1.1),
+      throwsAssertionError,
+    );
   });
 
   test('Install ID is stable UUID then renews after clear', () async {
@@ -88,32 +116,38 @@ void main() {
   });
 
   test(
-      'Diagnostics report omits banned extras and includes install_id after init',
-      () async {
-    await ArtizioTelemetry.init(
-      options: const ArtizioTelemetryOptions(
-        appName: 'frezio',
-        debugLogEvents: false,
-      ),
-      appRunner: () async {},
-    );
-    await ArtizioLogger.error('ZIP_IMPORT_FAILED', error: StateError('bad'));
-    final report = await ArtizioDiagnostics.buildReport(
-      extras: {
-        'expenses': '12',
-        'active_org': 'SARL Dupont',
-        'merchant': 'x',
-      },
-    );
-    expect(report, contains('ZIP_IMPORT_FAILED'));
-    expect(report, contains('expenses=12'));
-    expect(report, contains('install_id='));
-    expect(report, isNot(contains('Dupont')));
-    expect(report, contains('sentry_remote=off'));
-  });
+    'Diagnostics report omits banned extras and includes install_id after init',
+    () async {
+      await ArtizioTelemetry.init(
+        options: const ArtizioTelemetryOptions(
+          appName: 'frezio',
+          debugLogEvents: false,
+        ),
+        appRunner: () async {},
+      );
+      await ArtizioLogger.error(
+        'ZIP_IMPORT_FAILED',
+        error: StateError('bad'),
+        message: 'Client Dupont alice@example.com',
+      );
+      final report = await ArtizioDiagnostics.buildReport(
+        extras: {
+          'expenses': '12',
+          'active_org': 'SARL Dupont',
+          'merchant': 'x',
+        },
+      );
+      expect(report, contains('ZIP_IMPORT_FAILED'));
+      expect(report, contains('expenses=12'));
+      expect(report, contains('install_id='));
+      expect(report, isNot(contains('Dupont')));
+      expect(report, isNot(contains('alice@example.com')));
+      expect(report, contains('sentry_remote=off'));
+    },
+  );
 
   test('setEnabled persists and gates analytics remote path', () async {
-    expect(ArtizioTelemetry.isEnabled, isTrue);
+    expect(ArtizioTelemetry.isEnabled, isFalse);
     await ArtizioTelemetry.setEnabled(false);
     expect(ArtizioTelemetry.isEnabled, isFalse);
     final prefs = await SharedPreferences.getInstance();
@@ -148,8 +182,10 @@ void main() {
     expect(scrubbed, contains('[redacted-file-url]'));
     expect(scrubbed, isNot(contains('alice@example.com')));
     expect(scrubbed, isNot(contains('/Users/virginie')));
-    expect(scrubbed.length,
-        lessThanOrEqualTo(ArtizioPrivacyScrubber.maxFreeformLength + 1));
+    expect(
+      scrubbed.length,
+      lessThanOrEqualTo(ArtizioPrivacyScrubber.maxFreeformLength + 1),
+    );
   });
 
   test('beforeSend drops when disabled and clears request', () {
@@ -157,10 +193,7 @@ void main() {
       message: SentryMessage('fail alice@example.com /Users/me/a.txt'),
       request: SentryRequest(url: 'https://api.example/v1?email=a@b.c'),
       exceptions: [
-        SentryException(
-          type: 'StateError',
-          value: 'boom file:///tmp/x.pdf',
-        ),
+        SentryException(type: 'StateError', value: 'boom file:///tmp/x.pdf'),
       ],
     );
 
@@ -172,19 +205,15 @@ void main() {
         message: SentryMessage('fail alice@example.com /Users/me/a.txt'),
         request: SentryRequest(url: 'https://api.example/v1'),
         exceptions: [
-          SentryException(
-            type: 'StateError',
-            value: 'boom file:///tmp/x.pdf',
-          ),
+          SentryException(type: 'StateError', value: 'boom file:///tmp/x.pdf'),
         ],
       ),
       enabled: true,
     );
     expect(kept, isNotNull);
     expect(kept!.request, isNull);
-    expect(kept.message!.formatted, isNot(contains('alice@')));
-    expect(kept.message!.formatted, isNot(contains('/Users/')));
-    expect(kept.exceptions!.single.value, contains('[redacted-file-url]'));
+    expect(kept.message!.formatted, '[redacted-message]');
+    expect(kept.exceptions!.single.value, '[redacted-exception-message]');
   });
 
   test('scrubEvent clears SentryMessage.params', () {
@@ -198,11 +227,10 @@ void main() {
       enabled: true,
     );
     expect(kept!.message!.params, isNull);
-    expect(kept.message!.formatted, contains('[redacted-email]'));
-    expect(kept.message!.formatted, isNot(contains('alice@')));
+    expect(kept.message!.formatted, '[redacted-message]');
   });
 
-  test('scrubEvent redacts breadcrumb.data string values', () {
+  test('scrubEvent applies the property allowlist to breadcrumbs', () {
     final kept = ArtizioPrivacyScrubber.scrubEvent(
       SentryEvent(
         breadcrumbs: [
@@ -211,7 +239,7 @@ void main() {
             data: {
               'path': '/Users/virginie/ticket.pdf',
               'count': 3,
-              'url': 'file:///tmp/x.jpg',
+              'source': 'camera',
             },
           ),
         ],
@@ -219,13 +247,11 @@ void main() {
       enabled: true,
     );
     final crumb = kept!.breadcrumbs!.single;
-    expect(crumb.message, contains('[redacted-email]'));
-    expect(crumb.data!['path'], '[redacted-path]');
-    expect(crumb.data!['url'], contains('[redacted-file-url]'));
-    expect(crumb.data!['count'], 3);
+    expect(crumb.message, '[redacted-breadcrumb]');
+    expect(crumb.data, {'source': 'camera'});
   });
 
-  test('scrubEvent redacts nested breadcrumb.data maps and lists', () {
+  test('scrubEvent drops nested breadcrumb data', () {
     final kept = ArtizioPrivacyScrubber.scrubEvent(
       SentryEvent(
         breadcrumbs: [
@@ -243,28 +269,26 @@ void main() {
       ),
       enabled: true,
     );
-    final data = kept!.breadcrumbs!.single.data!;
-    final meta = data['meta'] as Map;
-    expect(meta['email'], contains('[redacted-email]'));
-    expect(meta['file'], '[redacted-path]');
-    final tags = data['tags'] as List;
-    expect(tags[0], 'ok');
-    expect(tags[1], contains('[redacted-file-url]'));
+    expect(kept!.breadcrumbs!.single.data, isNull);
   });
 
   test('scrubEvent drops unknown extras and contexts', () {
     final kept = ArtizioPrivacyScrubber.scrubEvent(
       SentryEvent(
         // ignore: deprecated_member_use
-        extra: {
-          'source': 'camera',
-          'merchant': 'Dupont',
-          'secret_blob': 'pii',
-        },
-        contexts: Contexts(
-          app: SentryApp(name: 'trajio'),
-          device: SentryDevice(model: 'Pixel'),
-        )..['custom_pii'] = {'email': 'a@b.c'},
+        extra: {'source': 'camera', 'merchant': 'Dupont', 'secret_blob': 'pii'},
+        user: SentryUser(email: 'alice@example.com'),
+        serverName: 'alice-macbook',
+        transaction: '/client/alice',
+        tags: {'error_code': 'PDF_EXPORT_FAILED', 'email': 'alice@example.com'},
+        contexts:
+            Contexts(
+                app: SentryApp(name: 'trajio'),
+                device: SentryDevice(model: 'Pixel'),
+              )
+              ..['custom_pii'] = {'email': 'a@b.c'}
+              ..['response'] = {'body': 'Alice Dupont'}
+              ..['feedback'] = {'contact_email': 'alice@example.com'},
       ),
       enabled: true,
     );
@@ -274,7 +298,13 @@ void main() {
     expect(kept.extra!['source'], 'camera');
     expect(kept.contexts.containsKey('custom_pii'), isFalse);
     expect(kept.contexts.app, isNotNull);
-    expect(kept.contexts.device, isNotNull);
+    expect(kept.contexts.device, isNull);
+    expect(kept.contexts.containsKey('response'), isFalse);
+    expect(kept.contexts.containsKey('feedback'), isFalse);
+    expect(kept.user, isNull);
+    expect(kept.serverName, isNull);
+    expect(kept.transaction, ArtizioPropsAllowlist.invalidEventName);
+    expect(kept.tags, {'error_code': 'PDF_EXPORT_FAILED'});
   });
 
   test('scrubEvent replaces frame absPath and fileName with basename', () {
@@ -304,4 +334,95 @@ void main() {
     expect(frame.absPath, isNot(contains('/Users/')));
     expect(frame.fileName, isNot(contains(r'C:\')));
   });
+
+  test('Remote backend is gated and receives only sanitized values', () async {
+    final backend = _RecordingBackend();
+    ArtizioTelemetry.debugReset(backend: backend);
+
+    await ArtizioAnalytics.track(
+      'alice@example.com',
+      props: {'source': 'camera', 'merchant': 'Dupont'},
+    );
+    await ArtizioLogger.error('/Users/alice/secret.txt');
+    expect(backend.events, isEmpty);
+    expect(backend.messages, isEmpty);
+
+    await ArtizioTelemetry.setEnabled(true);
+    await ArtizioAnalytics.track(
+      'alice@example.com',
+      props: {'source': 'camera', 'merchant': 'Dupont'},
+    );
+    await ArtizioLogger.error('/Users/alice/secret.txt');
+
+    expect(backend.events.single, ArtizioPropsAllowlist.invalidEventName);
+    expect(backend.eventProps.single, {'source': 'camera'});
+    expect(backend.messages.single, ArtizioPropsAllowlist.invalidErrorCode);
+    expect(backend.messageCodes.single, ArtizioPropsAllowlist.invalidErrorCode);
+    expect(backend.allText, isNot(contains('alice@example.com')));
+    expect(backend.allText, isNot(contains('/Users/alice')));
+    expect(backend.allText, isNot(contains('Dupont')));
+  });
+}
+
+class _RecordingBackend implements TelemetryBackend {
+  final events = <String>[];
+  final eventProps = <Map<String, Object?>>[];
+  final messages = <String>[];
+  final messageCodes = <String?>[];
+  final exceptions = <Object>[];
+  final breadcrumbs = <String>[];
+
+  String get allText => [
+    ...events,
+    ...eventProps.map((value) => value.toString()),
+    ...messages,
+    ...messageCodes.whereType<String>(),
+    ...breadcrumbs,
+  ].join(' ');
+
+  @override
+  void addBreadcrumb(
+    String message, {
+    String? category,
+    Map<String, Object?>? data,
+  }) {
+    breadcrumbs.add(message);
+  }
+
+  @override
+  Future<void> captureException(
+    Object error, {
+    StackTrace? stackTrace,
+    String? code,
+    String? message,
+    Map<String, String>? tags,
+  }) async {
+    exceptions.add(error);
+  }
+
+  @override
+  Future<void> captureMessage(
+    String message, {
+    String level = 'error',
+    String? code,
+    Map<String, String>? tags,
+  }) async {
+    messages.add(message);
+    messageCodes.add(code);
+  }
+
+  @override
+  List<NavigatorObserver> get navigatorObservers => const [];
+
+  @override
+  void setContext(String key, Map<String, Object?> context) {}
+
+  @override
+  void setTag(String key, String value) {}
+
+  @override
+  Future<void> track(String event, {Map<String, Object?>? props}) async {
+    events.add(event);
+    eventProps.add(props ?? const {});
+  }
 }

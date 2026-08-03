@@ -11,37 +11,24 @@ abstract final class ArtizioPrivacyScrubber {
 
   /// Contextes Sentry SDK conservés (le reste est retiré).
   static const allowedContextKeys = <String>{
-    'device',
+    'app',
     'os',
     'runtime',
     'runtimes',
-    'app',
-    'browser',
-    'gpu',
-    'culture',
     'trace',
-    'response',
-    'feedback',
-    'flags',
   };
 
   static final _emailRe = RegExp(
     r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}',
   );
-  static final _fileUrlRe = RegExp(
-    r'file://\S+',
-    caseSensitive: false,
-  );
+  static final _fileUrlRe = RegExp(r'file://\S+', caseSensitive: false);
   static final _absPathRe = RegExp(
     r'(?:[A-Za-z]:\\|/(?:Users|home|var|tmp|private|data|Applications|Volumes|sdcard|storage)/)\S*',
     caseSensitive: false,
   );
 
   /// Redacte e-mails, `file://`, chemins absolus, puis tronque.
-  static String scrubText(
-    String input, {
-    int maxLength = maxFreeformLength,
-  }) {
+  static String scrubText(String input, {int maxLength = maxFreeformLength}) {
     var s = input;
     s = s.replaceAll(_emailRe, '[redacted-email]');
     s = s.replaceAll(_fileUrlRe, '[redacted-file-url]');
@@ -80,20 +67,29 @@ abstract final class ArtizioPrivacyScrubber {
   /// Applique la politique privacy sur un [SentryEvent].
   ///
   /// Retourne `null` pour abandonner l’envoi (opt-out).
-  static SentryEvent? scrubEvent(
-    SentryEvent event, {
-    required bool enabled,
-  }) {
+  static SentryEvent? scrubEvent(SentryEvent event, {required bool enabled}) {
     if (!enabled) return null;
 
     event.request = null;
+    event.user = null;
+    event.serverName = null;
+
+    final transaction = event.transaction;
+    if (transaction != null && transaction.isNotEmpty) {
+      event.transaction = ArtizioPropsAllowlist.sanitizeEventName(transaction);
+    }
+
+    final safeTags = ArtizioPropsAllowlist.sanitizeTags(event.tags);
+    event.tags = safeTags.isEmpty ? null : safeTags;
 
     final msg = event.message;
     if (msg != null) {
+      final formatted = msg.formatted;
       event.message = SentryMessage(
-        scrubText(msg.formatted),
-        template: msg.template == null ? null : scrubText(msg.template!),
-        // params peuvent contenir e-mails / chemins ; on les vide.
+        ArtizioPropsAllowlist.isSafeTelemetryIdentifier(formatted)
+            ? formatted.trim()
+            : '[redacted-message]',
+        template: null,
         params: null,
       );
     }
@@ -101,9 +97,8 @@ abstract final class ArtizioPrivacyScrubber {
     final exceptions = event.exceptions;
     if (exceptions != null) {
       for (final ex in exceptions) {
-        final value = ex.value;
-        if (value != null && value.isNotEmpty) {
-          ex.value = scrubText(value);
+        if (ex.value?.isNotEmpty ?? false) {
+          ex.value = '[redacted-exception-message]';
         }
         _scrubStackTrace(ex.stackTrace);
       }
@@ -121,20 +116,24 @@ abstract final class ArtizioPrivacyScrubber {
       for (final c in crumbs) {
         final m = c.message;
         if (m != null && m.isNotEmpty) {
-          c.message = scrubText(m);
+          c.message =
+              ArtizioPropsAllowlist.isSafeTelemetryIdentifier(m)
+                  ? m.trim()
+                  : '[redacted-breadcrumb]';
         }
         final data = c.data;
         if (data != null && data.isNotEmpty) {
-          c.data = {
-            for (final e in data.entries) e.key: scrubValue(e.value),
-          };
+          final safe = ArtizioPropsAllowlist.sanitize({
+            for (final e in data.entries) e.key: e.value,
+          });
+          c.data = safe.isEmpty ? null : Map<String, dynamic>.from(safe);
         }
       }
     }
 
     final culprit = event.culprit;
     if (culprit != null && culprit.isNotEmpty) {
-      event.culprit = scrubText(culprit);
+      event.culprit = '[redacted-culprit]';
     }
 
     // extras : deny-by-default via allowlist (valeurs scalaires sûres).
@@ -149,6 +148,7 @@ abstract final class ArtizioPrivacyScrubber {
     }
 
     _scrubContexts(event.contexts);
+    event.contexts.trace?.data = null;
 
     return event;
   }

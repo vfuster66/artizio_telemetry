@@ -4,12 +4,15 @@ class ArtizioTelemetryOptions {
     required this.appName,
     this.dsn = '',
     this.environment,
-    this.tracesSampleRate = 0.2,
+    this.tracesSampleRate = 0,
     this.enableInDebug = false,
-    this.enabledByDefault = true,
+    this.enabledByDefault = false,
     this.debugLogEvents,
     this.release,
-  });
+  }) : assert(
+         tracesSampleRate >= 0 && tracesSampleRate <= 1,
+         'tracesSampleRate must be between 0 and 1.',
+       );
 
   /// Identifiant suite : `frezio`, `trajio`, `surfacio`, `staggio`.
   final String appName;

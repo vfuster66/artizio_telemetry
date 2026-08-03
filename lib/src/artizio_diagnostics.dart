@@ -23,9 +23,7 @@ abstract final class ArtizioDiagnostics {
   /// Construit un rapport texte partageable.
   ///
   /// [extras] : compteurs anonymes uniquement (voir [allowedExtraKeys]).
-  static Future<String> buildReport({
-    Map<String, String>? extras,
-  }) async {
+  static Future<String> buildReport({Map<String, String>? extras}) async {
     final buf = StringBuffer();
     final opts = ArtizioTelemetry.options;
     final info = await _packageInfo();
@@ -40,17 +38,17 @@ abstract final class ArtizioDiagnostics {
     buf.writeln('os=${_osVersion()}');
     buf.writeln('locale=${PlatformDispatcher.instance.locale}');
     buf.writeln(
-      'build_mode=${kReleaseMode ? 'release' : kProfileMode ? 'profile' : 'debug'}',
+      'build_mode=${kReleaseMode
+          ? 'release'
+          : kProfileMode
+          ? 'profile'
+          : 'debug'}',
     );
     buf.writeln(
       'sentry_remote=${ArtizioTelemetry.isRemoteEnabled ? 'on' : 'off'}',
     );
-    buf.writeln(
-      'telemetry_enabled=${ArtizioTelemetry.isEnabled}',
-    );
-    buf.writeln(
-      'environment=${opts?.environment ?? '(default)'}',
-    );
+    buf.writeln('telemetry_enabled=${ArtizioTelemetry.isEnabled}');
+    buf.writeln('environment=${opts?.environment ?? '(default)'}');
     final installId = ArtizioTelemetry.installId;
     if (installId != null) {
       buf.writeln('install_id=$installId');
@@ -73,7 +71,7 @@ abstract final class ArtizioDiagnostics {
       buf.writeln('(none)');
     } else {
       for (final e in recent.reversed) {
-        buf.writeln(e.toString());
+        buf.writeln(e.toDiagnosticString());
       }
     }
 

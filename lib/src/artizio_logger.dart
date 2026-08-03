@@ -1,4 +1,5 @@
 import 'artizio_telemetry.dart';
+import 'privacy_scrubber.dart';
 import 'props_allowlist.dart';
 import 'recent_event.dart';
 
@@ -13,8 +14,9 @@ abstract final class ArtizioLogger {
     String? message,
     Map<String, String>? tags,
   }) async {
+    final safeCode = ArtizioPropsAllowlist.sanitizeErrorCode(code);
     final safeTags = ArtizioPropsAllowlist.sanitizeTags({
-      'error_code': code,
+      'error_code': safeCode,
       ...?tags,
     });
 
@@ -22,22 +24,21 @@ abstract final class ArtizioLogger {
       RecentEvent(
         at: DateTime.now().toUtc(),
         kind: 'error',
-        code: code,
-        message: message,
+        code: safeCode,
         error: error?.runtimeType.toString(),
       ),
     );
 
     ArtizioTelemetry.debugLog(
-      'error $code'
-      '${message == null ? '' : ' — $message'}'
+      'error $safeCode'
+      '${message == null ? '' : ' — ${ArtizioPrivacyScrubber.scrubText(message)}'}'
       '${error == null ? '' : ' (${error.runtimeType})'}',
     );
 
     if (!ArtizioTelemetry.isEnabled) return;
 
     ArtizioTelemetry.backend.addBreadcrumb(
-      code,
+      safeCode,
       category: 'error',
       data: safeTags,
     );
@@ -46,14 +47,14 @@ abstract final class ArtizioLogger {
       await ArtizioTelemetry.backend.captureException(
         error,
         stackTrace: stackTrace,
-        code: code,
+        code: safeCode,
         // Pas de message UI / toString() libre vers le remote (risque PII).
         tags: safeTags,
       );
     } else {
       await ArtizioTelemetry.backend.captureMessage(
-        code,
-        code: code,
+        safeCode,
+        code: safeCode,
         tags: safeTags,
       );
     }
@@ -64,24 +65,20 @@ abstract final class ArtizioLogger {
     String? message,
     Map<String, String>? tags,
   }) async {
+    final safeCode = ArtizioPropsAllowlist.sanitizeErrorCode(code);
     final safeTags = ArtizioPropsAllowlist.sanitizeTags({
-      'error_code': code,
+      'error_code': safeCode,
       ...?tags,
     });
     ArtizioTelemetry.recentEvents.add(
-      RecentEvent(
-        at: DateTime.now().toUtc(),
-        kind: 'error',
-        code: code,
-        message: message ?? 'warning',
-      ),
+      RecentEvent(at: DateTime.now().toUtc(), kind: 'error', code: safeCode),
     );
-    ArtizioTelemetry.debugLog('warning $code');
+    ArtizioTelemetry.debugLog('warning $safeCode');
     if (!ArtizioTelemetry.isEnabled) return;
     await ArtizioTelemetry.backend.captureMessage(
-      code,
+      safeCode,
       level: 'warning',
-      code: code,
+      code: safeCode,
       tags: safeTags,
     );
   }

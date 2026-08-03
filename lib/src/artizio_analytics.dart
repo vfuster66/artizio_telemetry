@@ -6,23 +6,21 @@ import 'recent_event.dart';
 abstract final class ArtizioAnalytics {
   ArtizioAnalytics._();
 
-  static Future<void> track(
-    String event, {
-    Map<String, Object?>? props,
-  }) async {
+  static Future<void> track(String event, {Map<String, Object?>? props}) async {
+    final safeEvent = ArtizioPropsAllowlist.sanitizeEventName(event);
     final safe = ArtizioPropsAllowlist.sanitize(props);
     ArtizioTelemetry.recentEvents.add(
       RecentEvent(
         at: DateTime.now().toUtc(),
         kind: 'analytics',
-        code: event,
+        code: safeEvent,
         message: safe.entries.map((e) => '${e.key}=${e.value}').join(', '),
       ),
     );
     ArtizioTelemetry.debugLog(
-      'track $event${safe.isEmpty ? '' : ' $safe'}',
+      'track $safeEvent${safe.isEmpty ? '' : ' $safe'}',
     );
     if (!ArtizioTelemetry.isEnabled) return;
-    await ArtizioTelemetry.backend.track(event, props: safe);
+    await ArtizioTelemetry.backend.track(safeEvent, props: safe);
   }
 }

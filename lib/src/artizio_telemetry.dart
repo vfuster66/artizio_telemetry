@@ -28,7 +28,7 @@ abstract final class ArtizioTelemetry {
   static ArtizioTelemetryOptions? _options;
   static bool _initialized = false;
   static String? _installId;
-  static bool _enabled = true;
+  static bool _enabled = false;
 
   static bool get isInitialized => _initialized;
   static bool get isRemoteEnabled => _backend is SentryTelemetryBackend;
@@ -70,7 +70,8 @@ abstract final class ArtizioTelemetry {
     final prefs = await SharedPreferences.getInstance();
     _enabled = prefs.getBool(prefsEnabledKey) ?? options.enabledByDefault;
 
-    final useSentry = options.hasDsn &&
+    final useSentry =
+        options.hasDsn &&
         !ArtizioTelemetryEnv.isFlutterTest &&
         (kReleaseMode || kProfileMode || options.enableInDebug);
 
@@ -89,17 +90,20 @@ abstract final class ArtizioTelemetry {
     await SentryFlutter.init(
       (sentryOptions) {
         sentryOptions.dsn = options.dsn.trim();
-        sentryOptions.tracesSampleRate = options.tracesSampleRate;
-        sentryOptions.environment = options.environment ??
+        sentryOptions.tracesSampleRate =
+            _enabled ? options.tracesSampleRate : 0;
+        sentryOptions.environment =
+            options.environment ??
             (kReleaseMode
                 ? 'production'
                 : kProfileMode
-                    ? 'profile'
-                    : 'debug');
+                ? 'profile'
+                : 'debug');
         sentryOptions.sendDefaultPii = false;
         sentryOptions.attachScreenshot = false;
         sentryOptions.considerInAppFramesByDefault = true;
         sentryOptions.beforeSend = _beforeSend;
+        sentryOptions.beforeSendTransaction = _beforeSendTransaction;
         if (release != null) {
           sentryOptions.release = release;
         }
@@ -120,6 +124,20 @@ abstract final class ArtizioTelemetry {
 
   static FutureOr<SentryEvent?> _beforeSend(SentryEvent event, Hint hint) {
     return ArtizioPrivacyScrubber.scrubEvent(event, enabled: _enabled);
+  }
+
+  static FutureOr<SentryTransaction?> _beforeSendTransaction(
+    SentryTransaction transaction,
+    Hint hint,
+  ) {
+    if (!_enabled) return null;
+    ArtizioPrivacyScrubber.scrubEvent(transaction, enabled: true);
+    transaction.transaction = ArtizioPropsAllowlist.sanitizeEventName(
+      transaction.transaction ?? '',
+    );
+    transaction.spans.clear();
+    transaction.contexts.trace?.data = null;
+    return transaction;
   }
 
   static void setTag(String key, String value) {
@@ -157,7 +175,7 @@ abstract final class ArtizioTelemetry {
     _options = null;
     _initialized = false;
     _installId = null;
-    _enabled = true;
+    _enabled = false;
     recentEvents.clear();
     ArtizioInstallId.debugClearCache();
   }

@@ -14,7 +14,9 @@ abstract final class ArtizioCrash {
     String? message,
     Map<String, String>? tags,
   }) async {
-    final eventCode = code ?? 'UNHANDLED';
+    final eventCode = ArtizioPropsAllowlist.sanitizeErrorCode(
+      code ?? 'UNHANDLED',
+    );
     final safeTags = ArtizioPropsAllowlist.sanitizeTags({
       'error_code': eventCode,
       'fatal': 'true',
@@ -26,13 +28,10 @@ abstract final class ArtizioCrash {
         at: DateTime.now().toUtc(),
         kind: 'crash',
         code: eventCode,
-        message: message,
         error: error.runtimeType.toString(),
       ),
     );
-    ArtizioTelemetry.debugLog(
-      'crash $eventCode (${error.runtimeType})',
-    );
+    ArtizioTelemetry.debugLog('crash $eventCode (${error.runtimeType})');
     if (!ArtizioTelemetry.isEnabled) return;
     await ArtizioTelemetry.backend.captureException(
       error,
@@ -49,12 +48,11 @@ abstract final class ArtizioCrash {
     StackTrace? stackTrace,
     String? message,
     Map<String, String>? tags,
-  }) =>
-      ArtizioLogger.error(
-        code,
-        error: error,
-        stackTrace: stackTrace,
-        message: message,
-        tags: tags,
-      );
+  }) => ArtizioLogger.error(
+    code,
+    error: error,
+    stackTrace: stackTrace,
+    message: message,
+    tags: tags,
+  );
 }

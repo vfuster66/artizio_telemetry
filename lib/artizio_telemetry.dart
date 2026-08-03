@@ -1,6 +1,4 @@
-/// Observabilité Artizio — API commune, backend Sentry.
-library artizio_telemetry;
-
+// Artizio observability public API, backed by Sentry.
 export 'src/artizio_analytics.dart';
 export 'src/artizio_crash.dart';
 export 'src/artizio_diagnostics.dart';
