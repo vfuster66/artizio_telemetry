@@ -2,6 +2,8 @@
 
 Façade commune d’observabilité pour la suite Artizio.
 
+> Version `0.2.0` · analyse statique et 21 tests vérifiés le 3 août 2026.
+
 ```dart
 ArtizioCrash.report(error, stackTrace: st);
 ArtizioLogger.error('PDF_EXPORT_FAILED', error: e, stackTrace: st);
